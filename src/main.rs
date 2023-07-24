@@ -523,41 +523,6 @@ async fn convert_to_transfer_cd() -> String {
 	format!("SUCCESS in converting config to transfer CD")
 }
 
-// #[tauri::command]
-// //for testing only
-// async fn init_test() -> String {
-//     let auth = bitcoincore_rpc::Auth::UserPass("rpcuser".to_string(), "477028".to_string());
-//     let client = match bitcoincore_rpc::Client::new(&"127.0.0.1:8332".to_string(), auth){
-	// 	Ok(client)=> client,
-	// 	Err(err)=> return Ok(format!("{}", err.to_string()))
-	// };
-//     let mut keys = Vec::new();
-//     let (mut xpriv, mut xpub) = generate_keypair().expect("could not gen keypair");
-//     keys.push(xpub);
-//     (xpriv, xpub) = generate_keypair().expect("could not gen keypair");
-//     keys.push(xpub);
-//     (xpriv, xpub) = generate_keypair().expect("could not gen keypair");
-//     keys.push(xpub);
-//     (xpriv, xpub) = generate_keypair().expect("could not gen keypair");
-//     keys.push(xpub);
-//     (xpriv, xpub) = generate_keypair().expect("could not gen keypair");
-//     keys.push(xpub);
-//     (xpriv, xpub) = generate_keypair().expect("could not gen keypair");
-//     keys.push(xpub);
-//     (xpriv, xpub) = generate_keypair().expect("could not gen keypair");
-//     keys.push(xpub);
-//     (xpriv, xpub) = generate_keypair().expect("could not gen keypair");
-//     keys.push(xpub);
-//     (xpriv, xpub) = generate_keypair().expect("could not gen keypair");
-//     keys.push(xpub);
-//     (xpriv, xpub) = generate_keypair().expect("could not gen keypair");
-//     keys.push(xpub);
-//     (xpriv, xpub) = generate_keypair().expect("could not gen keypair");
-//     keys.push(xpub);
-//     let desc = build_high_descriptor(&client, &keys).unwrap();
-//     format!("testing {} {}", desc, desc.sanity_check().unwrap() == ())
-// }
-
 #[tauri::command]
 async fn display_qr() -> String{
 	let output = Command::new("eog").args(["--disable-gallery", "--new-instance", "/mnt/ramdisk/qrcode.png"]).output().unwrap();
@@ -653,7 +618,7 @@ fn main() {
 		display_qr,
 		copy_to_clipboard,
 		retrieve_median_blocktime,
-		enable_networking
+		enable_networking, 
         ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

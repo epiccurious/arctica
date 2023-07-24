@@ -19,15 +19,15 @@ use crate::bitcoin_wallet::{
 //these paths assume the user is compiling the application with cargo run inside ~/arctica
 #[tauri::command]
 pub async fn init_iso() -> String {
-	println!("obtaining & creating modified ubuntu iso");
-	println!("removing stale writable");
+	println!("Obtaining & creating modified ubuntu iso");
+	println!("Removing stale writable");
 	//remove writable if exists, developer failsafe
 	Command::new("sudo").args(["rm", "-r", "-f", &("/media/".to_string()+&get_user()+"/writable")]).output().unwrap();
-	println!("unmounting stale writable & unbuntu mount if appropriate");
+	println!("Unmounting stale writable & unbuntu mount if appropriate");
 	//remove stale mount points if user has started arctica before
 	Command::new("sudo").args(["umount", &("/media/".to_string()+&get_user()+"/Ubuntu 22.04.2 LTS amd64")]).output().unwrap();
 	Command::new("sudo").args(["umount", &("/media/".to_string()+&get_user()+"/writable")]).output().unwrap();
-	println!("downloading kvm dependencies");
+	println!("Downloading kvm dependencies");
 	//download KVM deps
 	Command::new("sudo").args(["apt-get", "-y", "install", "qemu-system-x86", "qemu-kvm", "libvirt-clients", "libvirt-daemon-system", "bridge-utils"]).output().unwrap();
 	//obtain mkusb deps, 
@@ -41,7 +41,7 @@ pub async fn init_iso() -> String {
 	Command::new("sudo").args(["apt", "download", "wodim", "genisoimage", "ssss", "qrencode", "libqrencode4", "xclip"]).output().unwrap();
 	//check if ubuntu iso & bitcoin core already exists, and if no, obtain
 	//NOTE: this currently checks the arctica repo but this will change once refactor is finished and user can run binary on host machine 
-	println!("obtaining ubuntu iso and bitcoin core if needed");
+	println!("Obtaining ubuntu iso and bitcoin core if needed");
 	let a = std::path::Path::new("./ubuntu-22.04.2-desktop-amd64.iso").exists();
 	let b = std::path::Path::new("./bitcoin-25.0-x86_64-linux-gnu.tar.gz").exists();
 	if a == false{
@@ -56,14 +56,14 @@ pub async fn init_iso() -> String {
 			return format!("ERROR in init iso with downloading bitcoin core = {}", std::str::from_utf8(&output.stderr).unwrap());
 		}
 	}
-	println!("removing stale persistent isos");
+	println!("Removing stale persistent ISOs");
 	//remove stale persistent isos
 	Command::new("sudo").args(["rm", "persistent-ubuntu.iso"]).output().unwrap();
 	Command::new("sudo").args(["rm", "persistent-ubuntu1.iso"]).output().unwrap();
-	println!("removing stale pid");
+	println!("Removing stale pid");
 	//remove stale pid file
 	Command::new("sudo").args(["rm", "pid.txt"]).output().unwrap();
-	println!("modifying ubuntu iso to have persistence");
+	println!("Modifying ubuntu iso to have persistence");
 	//modify ubuntu iso to have persistence
 	let output = Command::new("bash").args([&(get_home()+"/arctica/scripts/sed1.sh")]).output().unwrap();
 	if !output.status.success() {
@@ -74,7 +74,7 @@ pub async fn init_iso() -> String {
 		return format!("ERROR in running sed1, script completed but did not create iso");
 	}
 	//modify ubuntu iso to have a shorter timeout at boot screen
-	println!("modifying ubuntu iso timeout");
+	println!("Modifying ubuntu iso timeout");
 	let output = Command::new("bash").args([&(get_home()+"/arctica/scripts/sed2.sh")]).output().unwrap();
 	if !output.status.success() {
 		return format!("ERROR in running sed2 {}", std::str::from_utf8(&output.stderr).unwrap());
@@ -83,7 +83,7 @@ pub async fn init_iso() -> String {
 	if !exists {
 		return format!("ERROR in running sed2, script completed but did not create iso");
 	}
-	println!("removing stale persistent iso");
+	println!("Removing stale persistent iso");
 	//remove stale persistent iso
 	Command::new("sudo").args(["rm", "persistent-ubuntu1.iso"]).output().unwrap();
 	println!("fallocate persistent iso");
@@ -92,35 +92,35 @@ pub async fn init_iso() -> String {
 	if !output.status.success() {
 		return format!("ERROR in init iso with fallocate persistent iso = {}", std::str::from_utf8(&output.stderr).unwrap());
 	}
-	println!("booting iso with kvm");
+	println!("Booting iso with kvm");
 	//boot kvm to establish persistence
 	let output = Command::new("kvm").args(["-m", "2048", &(get_home()+"/arctica/persistent-ubuntu.iso"), "-daemonize", "-pidfile", "pid.txt", "-cpu", "host", "-display", "none"]).output().unwrap();
 	if !output.status.success() {
 		return format!("ERROR in init iso with kvm = {}", std::str::from_utf8(&output.stderr).unwrap());
 	}
-	println!("sleeping for 200 seconds");
+	println!("Sleeping for 200 seconds");
 	// sleep for 250 seconds
 	Command::new("sleep").args(["200"]).output().unwrap();
-	println!("obtaining pid");
+	println!("Obtaining pid");
 	//obtain pid
 	let file = "./pid.txt";
 	let pid = match fs::read_to_string(file){
 		Ok(data) => data.replace("\n", ""),
 		Err(err) => return format!("{}", err.to_string())
 	};
-	println!("killing pid");
+	println!("Killing pid");
 	//kill pid
 	let output = Command::new("kill").args(["-9", &pid]).output().unwrap();
 	if !output.status.success() {
 		return format!("ERROR in init iso with killing pid = {}", std::str::from_utf8(&output.stderr).unwrap());
 	}
-	println!("mount persistent iso");
+	println!("Mount persistent iso");
 	//mount persistent iso at /media/$USER/
 	let output = Command::new("udisksctl").args(["loop-setup", "-f", &(get_home()+"/arctica/persistent-ubuntu.iso")]).output().unwrap();
 	if !output.status.success() {
 		return format!("ERROR in init iso with mounting persistent iso = {}", std::str::from_utf8(&output.stderr).unwrap());
 	}
-	println!("sleep for 2 seconds");
+	println!("Sleep for 2 seconds");
 	// sleep for 2 seconds
 	Command::new("sleep").args(["2"]).output().unwrap();
 	println!("opening file permissions for persistent dir");
@@ -167,18 +167,18 @@ pub async fn init_iso() -> String {
 	if !output.status.success() {
 		return format!("ERROR in init iso with copying xclip = {}", std::str::from_utf8(&output.stderr).unwrap());
 	}
-	println!("copying arctica binary");
+	println!("Copying arctica binary");
 	//copy over artica binary and make executable
 	let output = Command::new("cp").args([&(get_home()+"/arctica/target/debug/app"), &("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu/arctica")]).output().unwrap();
 	if !output.status.success() {
 		return format!("ERROR in init iso with copying arctica binary = {}", std::str::from_utf8(&output.stderr).unwrap());
 	}
-	println!("copying arctica icon");
+	println!("Copying arctica icon");
 	let output = Command::new("cp").args([&(get_home()+"/arctica/icons/arctica.jpeg"), &("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu/arctica.jpeg")]).output().unwrap();
 	if !output.status.success() {
 		return format!("ERROR in init iso with copying binary jpeg = {}", std::str::from_utf8(&output.stderr).unwrap());
 	}
-	println!("making arctica a .desktop file");
+	println!("Making arctica a .desktop file");
 	let output = Command::new("sudo").args(["cp", &(get_home()+"/arctica/shortcut/Arctica.desktop"), &("/media/".to_string()+&get_user()+"/writable/upper/usr/share/applications/Arctica.desktop")]).output().unwrap();
 	if !output.status.success() {
 		return format!("ERROR in init iso with copying arctica.desktop = {}", std::str::from_utf8(&output.stderr).unwrap());
@@ -191,31 +191,31 @@ pub async fn init_iso() -> String {
 	// if !output.status.success() {
 	// 	return format!("ERROR in init iso with copying arctica.desktop = {}", std::str::from_utf8(&output.stderr).unwrap());
 	// }
-	println!("making arctica binary an executable");
+	println!("Making arctica binary an executable");
 	//make the binary an executable file
 	let output = Command::new("sudo").args(["chmod", "+x", &("/media/".to_string()+&get_user()+"/writable/upper/usr/share/applications/Arctica.desktop")]).output().unwrap();
 	if !output.status.success() {
 		return format!("ERROR in init iso with making binary executable = {}", std::str::from_utf8(&output.stderr).unwrap());
 	}
-	println!("copying scripts library");
+	println!("Copying scripts library");
 	//copy over scripts directory and its contents. 
 	let output = Command::new("cp").args(["-r", &(get_home()+"/arctica/scripts"), &("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu")]).output().unwrap();
 	if !output.status.success() {
 		return format!("ERROR in init iso with copying scripts dir = {}", std::str::from_utf8(&output.stderr).unwrap());
 	}
-	println!("extracting bitcoin core");
+	println!("Extracting bitcoin core");
 	//extract bitcoin core
 	let output = Command::new("tar").args(["-xzf", &(get_home()+"/arctica/bitcoin-25.0-x86_64-linux-gnu.tar.gz"), "-C", &("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu")]).output().unwrap();
 	if !output.status.success() {
 		return format!("ERROR in init iso with extracting bitcoin core = {}", std::str::from_utf8(&output.stderr).unwrap());
 	}
-	println!("create target device .bitcoin dir");
+	println!("Creating target device .bitcoin dir");
 	//create target device .bitcoin dir
 	let output = Command::new("mkdir").args([&("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu/.bitcoin")]).output().unwrap();
 	if !output.status.success() {
 		return format!("ERROR in init iso with making target .bitcoin dir = {}", std::str::from_utf8(&output.stderr).unwrap());
 	}
-	println!("create bitcoin.conf on target device");
+	println!("Creating bitcoin.conf on target device");
 	//create bitcoin.conf on target device
 	let file = File::create(&("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu/.bitcoin/bitcoin.conf")).unwrap();
 	let output = Command::new("echo").args(["-e", "rpcuser=rpcuser\nrpcpassword=477028\nspendzeroconfchange=1"]).stdout(file).output().unwrap();
@@ -248,9 +248,9 @@ pub async fn create_bootable_usb(number: String, setup: String) -> String {
 	}
 	//burn iso with mkusb
 	let mkusb_child = Command::new("printf").args(["%s\n", "n", "y", "g", "y"]).stdout(Stdio::piped()).spawn().unwrap();
-	println!("received stdout, piping to mkusb");
+	println!("Received stdout, piping to MKUSB");
 	let mkusb_child_two = Command::new("mkusb").args([&(get_home()+"/arctica/persistent-ubuntu.iso")]).stdin(Stdio::from(mkusb_child.stdout.unwrap())).stdout(Stdio::piped()).spawn().unwrap();
-	println!("mkusb finished creating output");
+	println!("MKUSB finished creating output");
 	let output = mkusb_child_two.wait_with_output().unwrap();
 	if !output.status.success() {
 		return format!("ERROR in creating bootable with mkusb = {}", std::str::from_utf8(&output.stderr).unwrap());
