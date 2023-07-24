@@ -953,7 +953,7 @@ pub async fn create_backup(number: String) -> String {
 		format!("SUCCESS in creating backup of current HW")
 }
 
-//make the existing backup directory into an iso and burn to the currently inserted CD/DVD
+//make the existing backup directory into an iso and burn to the currently inserted CD/DVD/M-DISC
 #[tauri::command]
 pub async fn make_backup(number: String) -> String {
 	println!("making backup iso of the current HW and burning to CD");

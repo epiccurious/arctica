@@ -102,7 +102,7 @@ async fn copy_cd_to_ramdisk() -> String {
 	format!("SUCCESS in coyping CD contents")
 }
 
-//read the config file of the currently inserted CD/DVD
+//read the config file of the currently inserted CD/DVD/M-DISC
 #[tauri::command]
 fn read_cd() -> std::string::String {
 	Command::new("sleep").args(["4"]).output().unwrap();
