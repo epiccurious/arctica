@@ -33,7 +33,7 @@ use setup::{
 mod bitcoin_wallet;
 use bitcoin_wallet::{
 	get_address, get_balance, get_transactions, generate_psbt, start_bitcoind,
-	stop_bitcoind, decode_processed_psbt, broadcast_tx, finalize_psbt, sign_processed_psbt, export_psbt, get_blockchain_info, 
+	stop_bitcoind, decode_processed_psbt, broadcast_tx, sign_processed_psbt, export_psbt, get_blockchain_info, 
 	load_wallet, get_descriptor_info, decode_funded_psbt, sign_funded_psbt, retrieve_median_blocktime
 };
 
@@ -74,49 +74,50 @@ fn read() -> std::string::String {
 
 //copy the contents of the currently inserted CD to the ramdisk /mnt/ramdisk/CDROM
 #[tauri::command]
-async fn copy_cd_to_ramdisk() -> String {
+async fn copy_cd_to_ramdisk() -> Result<String, String> {
 	Command::new("sleep").args(["4"]).output().unwrap();
 	//check if a CDROM is inserted
 	let a = std::path::Path::new("/dev/sr0").exists();
 	if a == false {
 		let er = "ERROR in copy_cd_to_ramdisk: No CD inserted";
-		return format!("{}", er)
+		return Err(format!("{}", er))
 	}
 	//check if CDROM is mounted at the proper filepath, if not, mount it
 	let mounted = check_cd_mount().to_string();
 	if mounted == "error" {
 		let er = "ERROR in copy_cd_to_ramdisk: error checking CD mount";
-		return format!("{}", er)
+		return Err(format!("{}", er))
 	}
 	//copy cd contents to ramdisk
 	let output = Command::new("cp").args(["-R", &("/media/".to_string()+&get_user()+"/CDROM"), "/mnt/ramdisk"]).output().unwrap();
 	if !output.status.success() {
-    	return format!("ERROR in copying CD contents = {}", std::str::from_utf8(&output.stderr).unwrap());
+    	return Err(format!("ERROR in copying CD contents = {}", std::str::from_utf8(&output.stderr).unwrap()));
     }
 	//open up permissions
 	let output = Command::new("sudo").args(["chmod", "-R", "777", "/mnt/ramdisk/CDROM"]).output().unwrap();
 	if !output.status.success() {
-    	return format!("ERROR in opening file permissions of CDROM = {}", std::str::from_utf8(&output.stderr).unwrap());
+    	return Err(format!("ERROR in opening file permissions of CDROM = {}", std::str::from_utf8(&output.stderr).unwrap()));
     }
 
-	format!("SUCCESS in coyping CD contents")
+	Ok(format!("SUCCESS in coyping CD contents"))
 }
 
 //read the config file of the currently inserted CD/DVD/M-DISC
+//TODO there is currently no error handling here, which enables the user to insert
 #[tauri::command]
-fn read_cd() -> std::string::String {
+fn read_cd() -> Result<String, String> {
 	Command::new("sleep").args(["4"]).output().unwrap();
 	//check if a CDROM is inserted
 	let a = std::path::Path::new("/dev/sr0").exists();
 	if a == false {
 		let er = "ERROR in read_CD: No CD inserted";
-		return format!("{}", er)
+		return Err(format!("{}", er))
 	}
 	//check if CDROM is mounted at the proper filepath, if not, mount it
 	let mounted = check_cd_mount();
 	if mounted == "error" {
 		let er = "ERROR in read_CD: error checking CD mount";
-		return format!("{}", er)
+		return Err(format!("{}", er))
 	}
 	//check for config
     // let config_file = "/mnt/ramdisk/CDROM/config.txt";
@@ -135,16 +136,16 @@ fn read_cd() -> std::string::String {
             println!("read line: {}={}", n, v);
         }
     }
-    format!("{}", contents)
+    Ok(format!("{}", contents))
 }
 
 #[tauri::command]
 //blank and rewrite the currently inserted disc with the contents of /mnt/ramdisk/CDROM
-async fn refresh_cd() -> String {
+async fn refresh_cd() -> Result<String, String> {
 	//create iso from CD dir
 	let output = Command::new("genisoimage").args(["-r", "-J", "-o", "/mnt/ramdisk/transferCD.iso", "/mnt/ramdisk/CDROM"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR refreshing CD with genisoimage = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR refreshing CD with genisoimage = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//check if the CDROM is blank
 	let dir_path = "/media/ubuntu/CDROM";
@@ -155,42 +156,42 @@ async fn refresh_cd() -> String {
 	if is_empty == false{
 		let output = Command::new("sudo").args(["wodim", "-v", "dev=/dev/sr0", "blank=fast"]).output().unwrap();
 		if !output.status.success() {
-			return format!("ERROR refreshing setupCD with wiping CD = {}", std::str::from_utf8(&output.stderr).unwrap());
+			return Err(format!("ERROR refreshing setupCD with wiping CD = {}", std::str::from_utf8(&output.stderr).unwrap()));
 		}
 	}
 	//burn setupCD iso to the setupCD
 	let output = Command::new("sudo").args(["wodim", "dev=/dev/sr0", "-v", "-data", "/mnt/ramdisk/transferCD.iso"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in refreshing CD with burning iso = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in refreshing CD with burning iso = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//eject the disc
 	let output = Command::new("sudo").args(["eject", "/dev/sr0"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in refreshing CD with ejecting CD = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in refreshing CD with ejecting CD = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
-	format!("SUCCESS in refreshing CD")
+	Ok(format!("SUCCESS in refreshing CD"))
 }
 
 //eject the current disc
 #[tauri::command]
-async fn eject_cd() -> String {
+async fn eject_cd() -> Result<String, String> {
 	//copy cd contents to ramdisk
 	let output = Command::new("sudo").args(["eject", "/dev/sr0"]).output().unwrap();
 	if !output.status.success() {
-    	return format!("ERROR in ejecting CD = {}", std::str::from_utf8(&output.stderr).unwrap());
+    	return Err(format!("ERROR in ejecting CD = {}", std::str::from_utf8(&output.stderr).unwrap()));
     }
-	format!("SUCCESS in ejecting CD")
+	Ok(format!("SUCCESS in ejecting CD"))
 }
 
 //pack up and encrypt the contents of the sensitive directory in ramdisk into an encrypted directory on the current Hardware Wallet
 #[tauri::command]
-async fn packup(hwnumber: String) -> String {
+async fn packup(hwnumber: String) -> Result<String, String> {
 	//this should never happen in a situation where ramdisk does not contain private & public keypairs. 
 	//Checking for this here helps prevent errors like accidentally overwriting an encrypted.gpg with a blank directory
 	let a = std::path::Path::new(&("/mnt/ramdisk/sensitive/private_key".to_string()+&hwnumber.to_string())).exists();
 	let b = std::path::Path::new(&("/mnt/ramdisk/sensitive/public_key".to_string()+&hwnumber.to_string())).exists();
 	if a == false || b == false {
-		return format!("Error in Packup, empty sensitive dir found, aborting overwrite")
+		return Err(format!("Error in Packup, empty sensitive dir found, aborting overwrite"))
 	}
 	println!("packing up sensitive info");
 	//remove stale encrypted dir
@@ -200,53 +201,53 @@ async fn packup(hwnumber: String) -> String {
 	//pack the sensitive directory into a tarball
 	let output = Command::new("tar").args(["cvf", "/mnt/ramdisk/unencrypted.tar", "/mnt/ramdisk/sensitive"]).output().unwrap();
 	if !output.status.success() {
-    	return format!("ERROR in packup = {}", std::str::from_utf8(&output.stderr).unwrap());
+    	return Err(format!("ERROR in packup = {}", std::str::from_utf8(&output.stderr).unwrap()));
     }
 	//encrypt the sensitive directory tarball 
 	let output = Command::new("gpg").args(["--batch", "--passphrase-file", "/mnt/ramdisk/CDROM/masterkey", "--output", &(get_home()+"/encrypted.gpg"), "--symmetric", "/mnt/ramdisk/unencrypted.tar"]).output().unwrap();
 	if !output.status.success() {
-    	return format!("ERROR in packup = {}", std::str::from_utf8(&output.stderr).unwrap());
+    	return Err(format!("ERROR in packup = {}", std::str::from_utf8(&output.stderr).unwrap()));
     }
-	format!("SUCCESS in packup")
+	Ok(format!("SUCCESS in packup"))
 }
 
 //decrypt & unpack the contents of an encrypted directory on the current Hardware Wallet into the sensitive directory in ramdisk
 #[tauri::command]
-async fn unpack() -> String {
+async fn unpack() -> Result<String, String> {
 	println!("unpacking sensitive info");
 	//remove stale tarball(We don't care if it fails/succeeds)
 	Command::new("sudo").args(["rm", "/mnt/ramdisk/decrypted.out"]).output().unwrap();
 	//decrypt sensitive directory
 	let output = Command::new("gpg").args(["--batch", "--passphrase-file", "/mnt/ramdisk/CDROM/masterkey", "--output", "/mnt/ramdisk/decrypted.out", "-d", &(get_home()+"/encrypted.gpg")]).output().unwrap();
 	if !output.status.success() {
-    	return format!("ERROR in unpack = {}", std::str::from_utf8(&output.stderr).unwrap());
+    	return Err(format!("ERROR in unpack = {}", std::str::from_utf8(&output.stderr).unwrap()));
     }
 	// unpack sensitive directory tarball
 	let output = Command::new("tar").args(["xvf", "/mnt/ramdisk/decrypted.out", "-C", "/mnt/ramdisk/"]).output().unwrap();
 	if !output.status.success() {
-    	return format!("ERROR in unpack = {}", std::str::from_utf8(&output.stderr).unwrap());
+    	return Err(format!("ERROR in unpack = {}", std::str::from_utf8(&output.stderr).unwrap()));
     }
     // copy sensitive dir to ramdisk
 	let output = Command::new("cp").args(["-R", "/mnt/ramdisk/mnt/ramdisk/sensitive", "/mnt/ramdisk"]).output().unwrap();
 	if !output.status.success() {
-    	return format!("ERROR in unpack = {}", std::str::from_utf8(&output.stderr).unwrap());
+    	return Err(format!("ERROR in unpack = {}", std::str::from_utf8(&output.stderr).unwrap()));
     }
 	// remove nested sensitive tarball output
 	Command::new("sudo").args(["rm", "-r", "/mnt/ramdisk/mnt"]).output().unwrap();
 	// #NOTES:
 	// #can use this to append files to a decrypted tarball without having to create an entire new one
 	// #tar rvf output_tarball ~/filestobeappended
-	format!("SUCCESS in unpack")
+	Ok(format!("SUCCESS in unpack"))
 }
 
 //create and mount the ramdisk directory for holding senstive data at /mnt/ramdisk
 #[tauri::command]
-async fn create_ramdisk() -> String {
+async fn create_ramdisk() -> Result<String, String> {
 	//check if the ramdisk already exists and has been used by Arctica this session
 	let a = std::path::Path::new("/mnt/ramdisk/sensitive").exists();
 	let b = std::path::Path::new("/mnt/ramdisk/CDROM").exists();
     if a == true || b == true{
-		return format!("Ramdisk already exists");
+		return Ok(format!("Ramdisk already exists"));
 	}
 	else{
 		//ramdisk is empty but the filepath exists
@@ -254,40 +255,40 @@ async fn create_ramdisk() -> String {
 		if c == true{
 			let output = Command::new("sudo").args(["rm", "-r", "/mnt/ramdisk"]).output().unwrap();
 			if !output.status.success() {
-				return format!("Error in removing stale /mnt/ramdisk")
+				return Err(format!("Error in removing stale /mnt/ramdisk"))
 			}
 		}
 		//disable swapiness
 		let output = Command::new("sudo").args(["swapoff", "-a"]).output().unwrap();
 		if !output.status.success() {
-			return format!("ERROR in disabling swapiness {}", std::str::from_utf8(&output.stderr).unwrap());
+			return Err(format!("ERROR in disabling swapiness {}", std::str::from_utf8(&output.stderr).unwrap()));
 			}
 		//create the ramdisk
 		let output = Command::new("sudo").args(["mkdir", "/mnt/ramdisk"]).output().unwrap();
 		if !output.status.success() {
-		return format!("ERROR in making /mnt/ramdisk dir {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in making /mnt/ramdisk dir {}", std::str::from_utf8(&output.stderr).unwrap()));
 		}
 		//allocate the RAM for ramdisk 
 		let output = Command::new("sudo").args(["mount", "-t", "ramfs", "-o", "size=250M", "ramfs", "/mnt/ramdisk"]).output().unwrap();
 		if !output.status.success() {
-			return format!("ERROR in Creating Ramdisk = {}", std::str::from_utf8(&output.stderr).unwrap());
+			return Err(format!("ERROR in Creating Ramdisk = {}", std::str::from_utf8(&output.stderr).unwrap()));
 		}
 		//open ramdisk file permissions
 		let output = Command::new("sudo").args(["chmod", "777", "/mnt/ramdisk"]).output().unwrap();
 		if !output.status.success() {
-			return format!("ERROR in Creating Ramdisk = {}", std::str::from_utf8(&output.stderr).unwrap());
+			return Err(format!("ERROR in Creating Ramdisk = {}", std::str::from_utf8(&output.stderr).unwrap()));
 		}
 		//make the target dir for encrypted payload to or from Hardware Wallets
 		let output = Command::new("mkdir").args(["/mnt/ramdisk/sensitive"]).output().unwrap();
 		if !output.status.success() {
-			return format!("ERROR in Creating /mnt/ramdiskamdisk/sensitive = {}", std::str::from_utf8(&output.stderr).unwrap());
+			return Err(format!("ERROR in Creating /mnt/ramdiskamdisk/sensitive = {}", std::str::from_utf8(&output.stderr).unwrap()));
 		}
 		//make the debug.log file
 		let output = Command::new("echo").args(["/mnt/ramdisk/debug.log"]).output().unwrap();
 		if !output.status.success() {
-			return format!("ERROR in Creating debug.log = {}", std::str::from_utf8(&output.stderr).unwrap());
+			return Err(format!("ERROR in Creating debug.log = {}", std::str::from_utf8(&output.stderr).unwrap()));
 		}
-	format!("SUCCESS in Creating Ramdisk")
+	Ok(format!("SUCCESS in Creating Ramdisk"))
 	}
 }
 
@@ -295,12 +296,12 @@ async fn create_ramdisk() -> String {
 //mount the internal storage drive at /media/$USER/$UUID
 //and symlinks internal .bitcoin/chainstate and ./bitcoin/blocks
 //the below internal drive configurations assume a default ubuntu install on the internal disk without any custom partitioning
-async fn mount_internal() -> String {
+async fn mount_internal() -> Result<String, String> {
 	//Obtain the internal storage device UUID if already mounted
 	let mut uuid = get_uuid();
 	//mount internal drive if nvme
 	if uuid == "ERROR in parsing /media/user" {
-		return format!("Error in parsing /media/user to get uuid")
+		return Err(format!("Error in parsing /media/user to get uuid"))
 	}
 	else if uuid == "none"{
 		//mount the internal drive if NVME
@@ -318,22 +319,22 @@ async fn mount_internal() -> String {
 		uuid = get_uuid();
 		//error in get_uuid()
 		if uuid == "ERROR in parsing /media/user" {
-			return format!("Error in parsing /media/user to get uuid")
+			return Err(format!("Error in parsing /media/user to get uuid"))
 		}
 		//no uuid found
 		else if uuid == "none" {
-			return format!("ERROR could not find a valid UUID in /media/$user");
+			return Err(format!("ERROR could not find a valid UUID in /media/$user"));
 		}
 		//obtain the username of the internal storage device
 		let host = Command::new(&("ls")).args([&("/media/".to_string()+&get_user()+"/"+&(uuid.to_string())+"/home")]).output().unwrap();
 		if !host.status.success() {
-			return format!("ERROR in parsing /media/user/uuid/home {}", std::str::from_utf8(&host.stderr).unwrap());
+			return Err(format!("ERROR in parsing /media/user/uuid/home {}", std::str::from_utf8(&host.stderr).unwrap()));
 		} 
 		let host_user = std::str::from_utf8(&host.stdout).unwrap().trim();
 		//open the file permissions for local host user dir
 		let output = Command::new("sudo").args(["chmod", "777", &("/media/".to_string()+&get_user()+"/"+&(uuid.to_string())+"/home/"+&(host_user.to_string()))]).output().unwrap();
 		if !output.status.success() {
-			return format!("ERROR in opening internal storage dir file permissions {}", std::str::from_utf8(&output.stderr).unwrap());
+			return Err(format!("ERROR in opening internal storage dir file permissions {}", std::str::from_utf8(&output.stderr).unwrap()));
 		} 
 		//make internal storage bitcoin dotfiles at /media/ubuntu/$UUID/home/$HOST_USER/.bitcoin/blocks & /media/ubuntu/$UUID/home/$HOST_USER/.bitcoin/chainstate
 		let c = std::path::Path::new(&("/media/".to_string()+&get_user()+"/"+&(uuid.to_string())+"/home/"+&(host_user.to_string())+"/.bitcoin/blocks")).exists();
@@ -341,32 +342,35 @@ async fn mount_internal() -> String {
 		if c == false && d == false{
 			let output = Command::new("sudo").args(["mkdir", "--parents", &("/media/".to_string()+&get_user()+"/"+&(uuid.to_string())+"/home/"+&(host_user.to_string())+"/.bitcoin/blocks"), &("/media/".to_string()+&get_user()+"/"+&(uuid.to_string())+"/home/"+&(host_user.to_string())+"/.bitcoin/chainstate") ]).output().unwrap();
 			if !output.status.success() {
-			return format!("ERROR in removing stale ./bitcoin/chainstate dir {}", std::str::from_utf8(&output.stderr).unwrap());
+			return Err(format!("ERROR in removing stale ./bitcoin/chainstate dir {}", std::str::from_utf8(&output.stderr).unwrap()));
 			}
 		}
 		//open file permissions of internal storage dotfile dirs
 		let output = Command::new("sudo").args(["chmod", "777", &("/media/".to_string()+&get_user()+"/"+&(uuid.to_string())+"/home/"+&(host_user.to_string())+"/.bitcoin")]).output().unwrap();
 		if !output.status.success() {
-			return format!("ERROR in opening file permissions of internal storage .bitcoin dirs {}", std::str::from_utf8(&output.stderr).unwrap());
+			return Err(format!("ERROR in opening file permissions of internal storage .bitcoin dirs {}", std::str::from_utf8(&output.stderr).unwrap()));
 		} 
 		let e = std::path::Path::new(&("/media/ubuntu/".to_string()+&(uuid.to_string()))).exists();
 		if e == true{
-			format!("SUCCESS in mounting the internal drive")
+			Ok(format!("SUCCESS in mounting the internal drive"))
 		}else{
-			format!("ERROR mounting internal drive, final check failed")
+			Err(format!("ERROR mounting internal drive, final check failed"))
 		}
 	}//in the following condition, get_uuid() returns a valid uuid.
 	// So we can assume that the internal drive is already mounted
 	else {
-		format!("SUCCESS internal drive is already mounted")
+		Ok(format!("SUCCESS internal drive is already mounted"))
 	}
 }
 
 //calculate time until next decay
 #[tauri::command]
-async fn calculate_decay_time(file: String) -> String {
+async fn calculate_decay_time(file: String) -> Result<String, String> {
 	//retrieve start time
-	let current_time_str = retrieve_median_blocktime();
+	let current_time_str = match retrieve_median_blocktime(){
+		Ok(current_time)=> current_time,
+		Err(err)=> return Err(format!("{}", err.to_string()))
+	};
 	let current_time: i64 = current_time_str.parse().unwrap();
 	//retrieve immediate_decay
 	let decay_time = retrieve_decay_time_integer(file.to_string());
@@ -387,10 +391,10 @@ async fn calculate_decay_time(file: String) -> String {
 	remainder = remainder % 60;
 	//  day
 	if years <= 0 && months <= 0 && weeks <= 0 && days <= 0 && hours <= 0 && minutes <= 0 {
-		format!("decay complete")
+		Ok(format!("decay complete"))
 	}
 	else{
-		format!("years={}, months={}, weeks={}, days={}, hours={}, minutes={}, seconds={}", years, months, weeks, days, hours, minutes, remainder)
+		Ok(format!("years={}, months={}, weeks={}, days={}, hours={}, minutes={}, seconds={}", years, months, weeks, days, hours, minutes, remainder))
 	}
 }
 
@@ -429,49 +433,49 @@ async fn check_for_masterkey() -> String {
 
 #[tauri::command]
 //this fn is used to store decryption shards gathered from various Hardware Wallets to eventually be reconstituted into a masterkey when attempting to log in manually
-async fn recovery_initiate() -> String {
+async fn recovery_initiate() -> Result<String, String> {
 	//create the CDROM dir if it does not already exist
 	let a = std::path::Path::new("/mnt/ramdisk/CDROM").exists();
 	if a == false{
 		let output = Command::new("mkdir").args(["/mnt/ramdisk/CDROM"]).output().unwrap();
 		if !output.status.success() {
-		return format!("ERROR in creating recovery CD, with making CDROM dir = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in creating recovery CD, with making CDROM dir = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	}
 	//create recoveryCD config, this informs the front end on BOOT whether or not the user is attempting to manually recover login or attempting to sign a PSBT
 	let file = File::create("/mnt/ramdisk/CDROM/config.txt").unwrap();
 	let output = Command::new("echo").args(["type=recoverycd" ]).stdout(file).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in creating recovery CD, with creating config = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in creating recovery CD, with creating config = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//collect shards from Hardware Wallets for export to transfer CD
 	let output = Command::new("cp").args(["-R", &(get_home()+"/shards"), "/mnt/ramdisk/CDROM/shards"]).output().unwrap();
 	if !output.status.success() {
-    	return format!("ERROR in creating recovery CD with copying shards from HW = {}", std::str::from_utf8(&output.stderr).unwrap());
+    	return Err(format!("ERROR in creating recovery CD with copying shards from HW = {}", std::str::from_utf8(&output.stderr).unwrap()));
     }
 	//create iso from transferCD dir
 	let output = Command::new("genisoimage").args(["-r", "-J", "-o", "/mnt/ramdisk/transferCD.iso", "/mnt/ramdisk/CDROM"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR creating recovery CD with creating ISO = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR creating recovery CD with creating ISO = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//wipe the CD 
 	Command::new("sudo").args(["umount", "/dev/sr0"]).output().unwrap();
 	let output = Command::new("sudo").args(["wodim", "-v", "dev=/dev/sr0", "blank=fast"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR converting to transfer CD with wiping CD = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR converting to transfer CD with wiping CD = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//burn transferCD iso to the transfer CD
 	Command::new("sudo").args(["wodim", "dev=/dev/sr0", "-v", "-data", "/mnt/ramdisk/transferCD.iso"]).output().unwrap();
 	let output = Command::new("sudo").args(["wodim", "-v", "dev=/dev/sr0", "blank=fast"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR converting to transfer CD with wiping CD = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR converting to transfer CD with wiping CD = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//eject the disc
 	let output = Command::new("sudo").args(["eject", "/dev/sr0"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in refreshing setupCD with ejecting CD = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in refreshing setupCD with ejecting CD = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
-	format!("SUCCESS in creating recovery CD")
+	Ok(format!("SUCCESS in creating recovery CD"))
 }
 
 //calculate the number of encryption shards currently in the ramdisk
@@ -485,12 +489,12 @@ async fn calculate_number_of_shards() -> u32 {
 }
 
 #[tauri::command]
-async fn collect_shards() -> String {
+async fn collect_shards() -> Result<String, String> {
 	println!("collecting shards");
 	//obtain a list of all of the filenames in $HOME/shards
 	let shards = Command::new(&("ls")).args([&(get_home()+"/shards")]).output().unwrap();
 	if !shards.status.success() {
-	return format!("ERROR in collect_shards() with parsing $HOME/shards");
+	return Err(format!("ERROR in collect_shards() with parsing $HOME/shards"));
 	} 
 	//convert the list of shards into a vector of results
 	let shards_output = std::str::from_utf8(&shards.stdout).unwrap();
@@ -500,64 +504,64 @@ async fn collect_shards() -> String {
 	for i in shards_vec{
 		let output = Command::new("cp").args([&(get_home()+"/shards"+&(i.to_string())), "/mnt/ramdisk/CDROM/shards"]).output().unwrap();
 		if !output.status.success() {
-			return format!("Error in collect_shards() with copying shards")
+			return Err(format!("Error in collect_shards() with copying shards"))
 		}
 		} 
-	format!("SUCCESS in collecting shards")
+	Ok(format!("SUCCESS in collecting shards"))
 }
 
 #[tauri::command]
 //convert the completed recovery CD to a Transfer CD via config file
-async fn convert_to_transfer_cd() -> String {
+async fn convert_to_transfer_cd() -> Result<String, String> {
 	//remove stale config
 	let output = Command::new("sudo").args(["rm", "/mnt/ramdisk/CDROM/config.txt"]).output().unwrap();
 	if !output.status.success() {
-		return format!("Error in convert to transfer CD with removing stale config = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("Error in convert to transfer CD with removing stale config = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//create transferCD config
 	let file = File::create("/mnt/ramdisk/CDROM/config.txt").unwrap();
 	let output = Command::new("echo").args(["type=transfercd" ]).stdout(file).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in converting to transfer CD, with creating config = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in converting to transfer CD, with creating config = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
-	format!("SUCCESS in converting config to transfer CD")
+	Ok(format!("SUCCESS in converting config to transfer CD"))
 }
 
 #[tauri::command]
-async fn display_qr() -> String{
+async fn display_qr() -> Result<String, String>{
 	let output = Command::new("eog").args(["--disable-gallery", "--new-instance", "/mnt/ramdisk/qrcode.png"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in displaying QR code with EOG = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in displaying QR code with EOG = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
-	format!("successfully displayed QR code")
+	Ok(format!("successfully displayed QR code"))
 }
 
 #[tauri::command]
-async fn copy_to_clipboard(address: String) -> String{
+async fn copy_to_clipboard(address: String) -> Result<String, String>{
 	let filepath = "/mnt/ramdisk/address";
 	fs::write(&filepath, address);
 
 	let output = Command::new("xclip").args(["-selection", "clipboard", &filepath]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in copying address to clipboard = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in copying address to clipboard = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	let output = Command::new("sudo").args(["rm", "/mnt/ramdisk/address"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in copying address to clipboard with removing old address = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in copying address to clipboard with removing old address = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
-	format!("successfully copied to clipboard")
+	Ok(format!("successfully copied to clipboard"))
 }
 
 #[tauri::command]
-async fn enable_networking() -> String{
+async fn enable_networking() -> Result<String, String>{
 	//enable networking 
 	let output = Command::new("sudo").args(["nmcli", "networking", "on"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR disabling networking = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR disabling networking = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//open wifi settings panel 
 	Command::new("gnome-control-center").output().unwrap();
-	format!("successfully enabled networking")
+	Ok(format!("successfully enabled networking"))
 }
 
 fn main() {
@@ -611,7 +615,6 @@ fn main() {
 		export_psbt,
 		sign_processed_psbt,
 		sign_funded_psbt,
-		finalize_psbt,
 		broadcast_tx,
 		decode_processed_psbt,
 		decode_funded_psbt,

@@ -18,7 +18,7 @@ use crate::bitcoin_wallet::{
 // file paths for this script and create_bootable_usb will need to change for prod
 //these paths assume the user is compiling the application with cargo run inside ~/arctica
 #[tauri::command]
-pub async fn init_iso() -> String {
+pub async fn init_iso() -> Result<String, String> {
 	println!("Obtaining & creating modified ubuntu iso");
 	println!("Removing stale writable");
 	//remove writable if exists, developer failsafe
@@ -47,13 +47,13 @@ pub async fn init_iso() -> String {
 	if a == false{
 		let output = Command::new("wget").args(["-O", "ubuntu-22.04.2-desktop-amd64.iso", "http://releases.ubuntu.com/jammy/ubuntu-22.04.2-desktop-amd64.iso"]).output().unwrap();
 		if !output.status.success() {
-			return format!("ERROR in init iso with downloading ubuntu iso = {}", std::str::from_utf8(&output.stderr).unwrap());
+			return Err(format!("ERROR in init iso with downloading ubuntu iso = {}", std::str::from_utf8(&output.stderr).unwrap()));
 		}
 	}
 	if b == false{
 		let output = Command::new("wget").args(["https://bitcoincore.org/bin/bitcoin-core-25.0/bitcoin-25.0-x86_64-linux-gnu.tar.gz"]).output().unwrap();
 		if !output.status.success() {
-			return format!("ERROR in init iso with downloading bitcoin core = {}", std::str::from_utf8(&output.stderr).unwrap());
+			return Err(format!("ERROR in init iso with downloading bitcoin core = {}", std::str::from_utf8(&output.stderr).unwrap()));
 		}
 	}
 	println!("Removing stale persistent ISOs");
@@ -67,21 +67,21 @@ pub async fn init_iso() -> String {
 	//modify ubuntu iso to have persistence
 	let output = Command::new("bash").args([&(get_home()+"/arctica/scripts/sed1.sh")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in running sed1 {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in running sed1 {}", std::str::from_utf8(&output.stderr).unwrap()));
 	} 
 	let exists = Path::new(&(get_home()+"/arctica/persistent-ubuntu1.iso")).exists();
 	if !exists {
-		return format!("ERROR in running sed1, script completed but did not create iso");
+		return Err(format!("ERROR in running sed1, script completed but did not create iso"));
 	}
 	//modify ubuntu iso to have a shorter timeout at boot screen
 	println!("Modifying ubuntu iso timeout");
 	let output = Command::new("bash").args([&(get_home()+"/arctica/scripts/sed2.sh")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in running sed2 {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in running sed2 {}", std::str::from_utf8(&output.stderr).unwrap()));
 	} 
 	let exists = Path::new(&(get_home()+"/arctica/persistent-ubuntu.iso")).exists();
 	if !exists {
-		return format!("ERROR in running sed2, script completed but did not create iso");
+		return Err(format!("ERROR in running sed2, script completed but did not create iso"));
 	}
 	println!("Removing stale persistent iso");
 	//remove stale persistent iso
@@ -90,13 +90,13 @@ pub async fn init_iso() -> String {
 	//fallocate persistent iso, creates a 7GB image. Image size determines final storage space allocated to writable
 	let output = Command::new("fallocate").args(["-l", "7GiB", "persistent-ubuntu.iso"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in init iso with fallocate persistent iso = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in init iso with fallocate persistent iso = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	println!("Booting iso with kvm");
 	//boot kvm to establish persistence
 	let output = Command::new("kvm").args(["-m", "2048", &(get_home()+"/arctica/persistent-ubuntu.iso"), "-daemonize", "-pidfile", "pid.txt", "-cpu", "host", "-display", "none"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in init iso with kvm = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in init iso with kvm = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	println!("Sleeping for 200 seconds");
 	// sleep for 250 seconds
@@ -106,19 +106,19 @@ pub async fn init_iso() -> String {
 	let file = "./pid.txt";
 	let pid = match fs::read_to_string(file){
 		Ok(data) => data.replace("\n", ""),
-		Err(err) => return format!("{}", err.to_string())
+		Err(err) => return Err(format!("{}", err.to_string()))
 	};
 	println!("Killing pid");
 	//kill pid
 	let output = Command::new("kill").args(["-9", &pid]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in init iso with killing pid = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in init iso with killing pid = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	println!("Mount persistent iso");
 	//mount persistent iso at /media/$USER/
 	let output = Command::new("udisksctl").args(["loop-setup", "-f", &(get_home()+"/arctica/persistent-ubuntu.iso")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in init iso with mounting persistent iso = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in init iso with mounting persistent iso = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	println!("Sleep for 2 seconds");
 	// sleep for 2 seconds
@@ -127,11 +127,11 @@ pub async fn init_iso() -> String {
 	//open file permissions for persistent directory
 	let output = Command::new("sudo").args(["chmod", "777", &("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in init iso with opening file permissions of persistent dir = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in init iso with opening file permissions of persistent dir = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	let a = std::path::Path::new(&("/media/".to_string()+&get_user()+"/writable/")).exists();
 	if a == false{
-		return format!("ERROR in init iso, problem with initial boot, persistent dir not found at /media/$USER/writable")
+		return Err(format!("ERROR in init iso, problem with initial boot, persistent dir not found at /media/$USER/writable"))
 	}
 	println!("Making dependencies directory");
 	//make dependencies directory
@@ -140,48 +140,48 @@ pub async fn init_iso() -> String {
 	//copying over dependencies genisoimage
 	let output = Command::new("cp").args([&(get_home()+"/arctica/genisoimage_9%3a1.1.11-3.2ubuntu1_amd64.deb"), &("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu/dependencies")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in init iso with copying genisoimage = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in init iso with copying genisoimage = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//copying over dependencies ssss
 	let output = Command::new("cp").args([&(get_home()+"/arctica/ssss_0.5-5_amd64.deb"), &("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu/dependencies")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in init iso with copying ssss = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in init iso with copying ssss = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//copying over dependencies wodim
 	let output = Command::new("cp").args([&(get_home()+"/arctica/wodim_9%3a1.1.11-3.2ubuntu1_amd64.deb"), &("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu/dependencies")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in init iso with copying wodim = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in init iso with copying wodim = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//copying over dependencies libqrencode4 library
 	let output = Command::new("cp").args([&(get_home()+"/arctica/libqrencode4_4.1.1-1_amd64.deb"), &("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu/dependencies")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in init iso with copying qrencode = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in init iso with copying qrencode = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//copying over dependencies qrencode
 	let output = Command::new("cp").args([&(get_home()+"/arctica/qrencode_4.1.1-1_amd64.deb"), &("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu/dependencies")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in init iso with copying qrencode = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in init iso with copying qrencode = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//copying over dependencies xclip
 	let output = Command::new("cp").args([&(get_home()+"/arctica/xclip_0.13-2_amd64.deb"), &("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu/dependencies")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in init iso with copying xclip = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in init iso with copying xclip = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	println!("Copying arctica binary");
 	//copy over artica binary and make executable
 	let output = Command::new("cp").args([&(get_home()+"/arctica/target/debug/app"), &("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu/arctica")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in init iso with copying arctica binary = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in init iso with copying arctica binary = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	println!("Copying arctica icon");
 	let output = Command::new("cp").args([&(get_home()+"/arctica/icons/arctica.jpeg"), &("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu/arctica.jpeg")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in init iso with copying binary jpeg = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in init iso with copying binary jpeg = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	println!("Making arctica a .desktop file");
 	let output = Command::new("sudo").args(["cp", &(get_home()+"/arctica/shortcut/Arctica.desktop"), &("/media/".to_string()+&get_user()+"/writable/upper/usr/share/applications/Arctica.desktop")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in init iso with copying arctica.desktop = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in init iso with copying arctica.desktop = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//keeping this commented out for dev work due to regular binary swapping
     //make arctica binary autostart after OS boot
@@ -195,41 +195,42 @@ pub async fn init_iso() -> String {
 	//make the binary an executable file
 	let output = Command::new("sudo").args(["chmod", "+x", &("/media/".to_string()+&get_user()+"/writable/upper/usr/share/applications/Arctica.desktop")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in init iso with making binary executable = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in init iso with making binary executable = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	println!("Copying scripts library");
 	//copy over scripts directory and its contents. 
 	let output = Command::new("cp").args(["-r", &(get_home()+"/arctica/scripts"), &("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in init iso with copying scripts dir = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in init iso with copying scripts dir = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	println!("Extracting bitcoin core");
 	//extract bitcoin core
 	let output = Command::new("tar").args(["-xzf", &(get_home()+"/arctica/bitcoin-25.0-x86_64-linux-gnu.tar.gz"), "-C", &("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in init iso with extracting bitcoin core = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in init iso with extracting bitcoin core = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	println!("Creating target device .bitcoin dir");
 	//create target device .bitcoin dir
 	let output = Command::new("mkdir").args([&("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu/.bitcoin")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in init iso with making target .bitcoin dir = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in init iso with making target .bitcoin dir = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	println!("Creating bitcoin.conf on target device");
 	//create bitcoin.conf on target device
 	let file = File::create(&("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu/.bitcoin/bitcoin.conf")).unwrap();
 	let output = Command::new("echo").args(["-e", "rpcuser=rpcuser\nrpcpassword=477028\nspendzeroconfchange=1"]).stdout(file).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in init iso, with creating bitcoin.conf = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in init iso, with creating bitcoin.conf = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
-	format!("SUCCESS in init_iso")
+	Ok(format!("SUCCESS in init_iso"))
 }
 
 
 //initial flash of all 7 Hardware Wallets
 //creates a bootable usb stick or SD card that will boot into an ubuntu live system when inserted into a computer
+//TODO it would be great if we could find a way to format the usb and remove any partitions before running this
 #[tauri::command]
-pub async fn create_bootable_usb(number: String, setup: String) -> String {
+pub async fn create_bootable_usb(number: String, setup: String) -> Result<String, String> {
 	//remove any stale config file
 	let a = std::path::Path::new(&("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu/config.txt")).exists();
 	if a == true{
@@ -244,7 +245,7 @@ pub async fn create_bootable_usb(number: String, setup: String) -> String {
 	//open file permissions for config
 	let output = Command::new("sudo").args(["chmod", "777", &("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu/config.txt")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in creating bootable with opening file permissions = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in creating bootable with opening file permissions = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//burn iso with mkusb
 	let mkusb_child = Command::new("printf").args(["%s\n", "n", "y", "g", "y"]).stdout(Stdio::piped()).spawn().unwrap();
@@ -253,14 +254,14 @@ pub async fn create_bootable_usb(number: String, setup: String) -> String {
 	println!("MKUSB finished creating output");
 	let output = mkusb_child_two.wait_with_output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in creating bootable with mkusb = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in creating bootable with mkusb = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
-	format!("SUCCESS in creating bootable device")
+	Ok(format!("SUCCESS in creating bootable device"))
 }
 
 #[tauri::command]
 //generates a public and private key pair and stores them as a text file
-pub async fn generate_store_key_pair(number: String) -> String {
+pub async fn generate_store_key_pair(number: String) -> Result<String, String> {
 	//number corresponds to currentHW here and is provided by the front end
 	let private_key_file = "/mnt/ramdisk/sensitive/private_key".to_string()+&number;
 	let public_key_file = "/mnt/ramdisk/sensitive/public_key".to_string()+&number;
@@ -269,49 +270,49 @@ pub async fn generate_store_key_pair(number: String) -> String {
     //generate an extended private and public keypair
     let (xpriv, xpub) = match generate_keypair() {
 		Ok((xpriv, xpub)) => (xpriv, xpub),
-		Err(err) => return "ERROR could not generate keypair: ".to_string()+&err.to_string()
+		Err(err) => return Err("ERROR could not generate keypair: ".to_string()+&err.to_string())
 	}; 
 	//note that change xkeys and standard xkeys are the same but simply given different derviation paths, they are stored seperately for ease of use
 	//change keys are assigned /1/* and external keys are assigned /0/*
     //store the xpriv as a file
 	match store_string(xpriv.to_string()+"/0/*", &private_key_file) {
 		Ok(_) => {},
-		Err(err) => return "ERROR could not store private key: ".to_string()+&err
+		Err(err) => return Err("ERROR could not store private key: ".to_string()+&err)
 	}
     //store the xpub as a file
 	match store_string(xpub.to_string()+"/0/*", &public_key_file) {
 		Ok(_) => {},
-		Err(err) => return "ERROR could not store public key: ".to_string()+&err
+		Err(err) => return Err("ERROR could not store public key: ".to_string()+&err)
 	}
 	//store the change_xpriv as a file
 	match store_string(xpriv.to_string()+"/1/*", &private_change_key_file) {
 		Ok(_) => {},
-		Err(err) => return "ERROR could not store private change key: ".to_string()+&err
+		Err(err) => return Err("ERROR could not store private change key: ".to_string()+&err)
 	}
 	//store the change_xpub as a file
 	match store_string(xpub.to_string()+"/1/*", &public_change_key_file) {
 		Ok(_) => {},
-		Err(err) => return "ERROR could not store public change key: ".to_string()+&err
+		Err(err) => return Err("ERROR could not store public change key: ".to_string()+&err)
 	}
 	//make the pubkey dir in the setupCD staging area if it does not already exist
 	let a = std::path::Path::new("/mnt/ramdisk/CDROM/pubkeys").exists();
     if a == false{
 		let output = Command::new("mkdir").args(["--parents", "/mnt/ramdisk/CDROM/pubkeys"]).output().unwrap();
 		if !output.status.success() {
-		return format!("ERROR in creating /mnt/ramdisk/CDROM/pubkeys dir {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in creating /mnt/ramdisk/CDROM/pubkeys dir {}", std::str::from_utf8(&output.stderr).unwrap()));
 		}
 	}
 	//copy public key to setupCD dir
 	let output = Command::new("cp").args([&("/mnt/ramdisk/sensitive/public_key".to_string()+&number), "/mnt/ramdisk/CDROM/pubkeys"]).output().unwrap();
 	if !output.status.success() {
-    	return format!("ERROR in generate store key pair with copying pub key= {}", std::str::from_utf8(&output.stderr).unwrap());
+    	return Err(format!("ERROR in generate store key pair with copying pub key= {}", std::str::from_utf8(&output.stderr).unwrap()));
     }
 	//copy public change key to setupCD dir
 	let output = Command::new("cp").args([&("/mnt/ramdisk/sensitive/public_change_key".to_string()+&number), "/mnt/ramdisk/CDROM/pubkeys"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in generate store key pair with copying pub change key= {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in generate store key pair with copying pub change key= {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
-	format!("SUCCESS generated and stored Private and Public Key Pair")
+	Ok(format!("SUCCESS generated and stored Private and Public Key Pair"))
 }
 
 //this function simulates the creation of a time machine key. Eventually this creation will be performed by the BPS and 
@@ -319,13 +320,13 @@ pub async fn generate_store_key_pair(number: String) -> String {
 //eventually these will need to be turned into descriptors and we will need an encryption scheme for the descriptors/keys that will be held by the BPS so as not to be privacy leaks
 //decryption key will be held within encrypted tarball on each Hardware Wallet
 #[tauri::command]
-pub async fn generate_store_simulated_time_machine_key_pair(number: String) -> String {
+pub async fn generate_store_simulated_time_machine_key_pair(number: String) -> Result<String, String> {
 	//make the time machine key dir in the setupCD staging area if it does not already exist
 	let a = std::path::Path::new("/mnt/ramdisk/CDROM/timemachinekeys").exists();
     if a == false{
 		let output = Command::new("mkdir").args(["--parents", "/mnt/ramdisk/CDROM/timemachinekeys"]).output().unwrap();
 		if !output.status.success() {
-		return format!("ERROR in creating /mnt/ramdisk/CDROM/timemachinekeys dir {}", std::str::from_utf8(&output.stderr).unwrap());
+			return Err(format!("ERROR in creating /mnt/ramdisk/CDROM/timemachinekeys dir {}", std::str::from_utf8(&output.stderr).unwrap()));
 		}
 	}
 	//TODO NOTE THAT THESE KEYS ARE STORED ALL OVER THE PLACE, fine for now but they will need to be properly stored once BPS is integrated
@@ -336,61 +337,61 @@ pub async fn generate_store_simulated_time_machine_key_pair(number: String) -> S
 	let public_change_key_file = "/mnt/ramdisk/CDROM/timemachinekeys/time_machine_public_change_key".to_string()+&number;
 	let (xpriv, xpub) = match generate_keypair() {
 		Ok((xpriv, xpub)) => (xpriv, xpub),
-		Err(err) => return "ERROR could not generate keypair: ".to_string()+&err.to_string()
+		Err(err) => return Err("ERROR could not generate keypair: ".to_string()+&err.to_string())
 	};
 	//note that change xkeys and standard xkeys are the same but simply given different derviation paths, they are stored seperately for ease of use
 	//change keys are assigned /1/* and external keys are assigned /0/*
     //store the xpriv as a file
 	match store_string(xpriv.to_string()+"/0/*", &private_key_file) {
 		Ok(_) => {},
-		Err(err) => return "ERROR could not store private key: ".to_string()+&err
+		Err(err) => return Err("ERROR could not store private key: ".to_string()+&err)
 	}
     //store the xpub as a file
 	match store_string(xpub.to_string()+"/0/*", &public_key_file) {
 		Ok(_) => {},
-		Err(err) => return "ERROR could not store public key: ".to_string()+&err
+		Err(err) => return Err("ERROR could not store public key: ".to_string()+&err)
 	}
 	//store the change_xpriv as a file
 	match store_string(xpriv.to_string()+"/1/*", &private_change_key_file) {
 		Ok(_) => {},
-		Err(err) => return "ERROR could not store private change key: ".to_string()+&err
+		Err(err) => return Err("ERROR could not store private change key: ".to_string()+&err)
 	}
 	//store the change_xpub as a file
 	match store_string(xpub.to_string()+"/1/*", &public_change_key_file) {
 		Ok(_) => {},
-		Err(err) => return "ERROR could not store public change key: ".to_string()+&err
+		Err(err) => return Err("ERROR could not store public change key: ".to_string()+&err)
 	}
 	//copy public key to setupCD dir
 	let output = Command::new("cp").args([&("/mnt/ramdisk/CDROM/timemachinekeys/time_machine_public_key".to_string()+&number), "/mnt/ramdisk/CDROM/pubkeys"]).output().unwrap();
 	if !output.status.success() {
-    	return format!("ERROR in generate store key pair with copying pub key to CDROM= {}", std::str::from_utf8(&output.stderr).unwrap());
+    	return Err(format!("ERROR in generate store key pair with copying pub key to CDROM= {}", std::str::from_utf8(&output.stderr).unwrap()));
     }
 	//copy public change key to setupCD dir
 	let output = Command::new("cp").args([&("/mnt/ramdisk/CDROM/timemachinekeys/time_machine_public_change_key".to_string()+&number), "/mnt/ramdisk/CDROM/pubkeys"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in generate store key pair with copying pub change key to CDROM= {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in generate store key pair with copying pub change key to CDROM= {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//copy public key to sensitive dir
 	let output = Command::new("cp").args([&("/mnt/ramdisk/CDROM/timemachinekeys/time_machine_public_key".to_string()+&number), "/mnt/ramdisk/sensitive"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in generate store key pair with copying pub key to sensitive = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in generate store key pair with copying pub key to sensitive = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//copy public change key to sensitive dir
 	let output = Command::new("cp").args([&("/mnt/ramdisk/CDROM/timemachinekeys/time_machine_public_change_key".to_string()+&number), "/mnt/ramdisk/sensitive"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in generate store key pair with copying pub change key to sensitive= {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in generate store key pair with copying pub change key to sensitive= {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//copy private key to sensitive dir
 	let output = Command::new("cp").args([&("/mnt/ramdisk/CDROM/timemachinekeys/time_machine_private_key".to_string()+&number), "/mnt/ramdisk/sensitive"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in generate store key pair with copying private key to sensitive = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in generate store key pair with copying private key to sensitive = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//copy private change key to sensitive dir
 	let output = Command::new("cp").args([&("/mnt/ramdisk/CDROM/timemachinekeys/time_machine_private_change_key".to_string()+&number), "/mnt/ramdisk/sensitive"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in generate store key pair with copying private change key to sensitive = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in generate store key pair with copying private change key to sensitive = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
-	format!("SUCCESS generated and stored Private and Public Time Machine Key Pair")
+	Ok(format!("SUCCESS generated and stored Private and Public Time Machine Key Pair"))
 }
 
 //create arctica descriptors
@@ -410,7 +411,7 @@ pub async fn create_descriptor(hwnumber: String) -> Result<String, String> {
    for i in 1..=7{
        let key = match fs::read_to_string(&("/mnt/ramdisk/CDROM/pubkeys/public_key".to_string()+&(i.to_string()))){
         Ok(key)=> key,
-        Err(err)=> return Ok(format!("{}", err.to_string()))
+        Err(err)=> return Err(format!("{}", err.to_string()))
     };
        key_array.push(key);
        println!("pushed key");
@@ -420,7 +421,7 @@ pub async fn create_descriptor(hwnumber: String) -> Result<String, String> {
 	for i in 1..=4{
 		let key = match fs::read_to_string(&("/mnt/ramdisk/CDROM/pubkeys/time_machine_public_key".to_string()+&(i.to_string()))){
 			Ok(key)=> key,
-			Err(err)=> return Ok(format!("{}", err.to_string()))
+			Err(err)=> return Err(format!("{}", err.to_string()))
 		};
 		key_array.push(key);
 		println!("pushed key");
@@ -433,7 +434,7 @@ pub async fn create_descriptor(hwnumber: String) -> Result<String, String> {
 	  for i in 1..=7{
 		  let key = match fs::read_to_string(&("/mnt/ramdisk/CDROM/pubkeys/public_change_key".to_string()+&(i.to_string()))){
 		   Ok(key)=> key,
-		   Err(err)=> return Ok(format!("{}", err.to_string()))
+		   Err(err)=> return Err(format!("{}", err.to_string()))
 	   };
 		  change_key_array.push(key);
 		  println!("pushed key");
@@ -443,7 +444,7 @@ pub async fn create_descriptor(hwnumber: String) -> Result<String, String> {
 	   for i in 1..=4{
 		   let key = match fs::read_to_string(&("/mnt/ramdisk/CDROM/pubkeys/time_machine_public_change_key".to_string()+&(i.to_string()))){
 			   Ok(key)=> key,
-			   Err(err)=> return Ok(format!("{}", err.to_string()))
+			   Err(err)=> return Err(format!("{}", err.to_string()))
 		   };
 		   change_key_array.push(key);
 		   println!("pushed key");
@@ -544,7 +545,7 @@ pub async fn create_descriptor(hwnumber: String) -> Result<String, String> {
    println!("importing immediate descriptor");
    match import_descriptor("immediate".to_string(), &hwnumber, false){
 	Ok(_) => {},
-	Err(err) => return Ok(format!("ERROR could not import Immediate Descriptor: {}", err))
+	Err(err) => return Err(format!("ERROR could not import Immediate Descriptor: {}", err))
    };
 	//import immediate change descriptor
 	println!("importing immediate change descriptor");
@@ -605,34 +606,40 @@ pub async fn create_descriptor(hwnumber: String) -> Result<String, String> {
 
 //function that creates the setupCD used to pass state between Hardware Wallets
 #[tauri::command]
-pub async fn create_setup_cd() -> String {
+pub async fn create_setup_cd() -> Result<String, String> {
+	//query /dev/sr?
+	let query = Command::new("ls").arg("/dev/sr?").output().unwrap();
+	let query_str = std::str::from_utf8(&query.stderr).unwrap();
+	if query_str.contains("No such file or directory"){
+		return Err(format!("ERROR No CD found in create_setup_cd"));
+	}
 	println!("creating setup CD");
 	//create local shards dir
 	Command::new("mkdir").args([&(get_home()+"/shards")]).output().unwrap();
 	//install HW dependencies for genisoimage
 	let output = Command::new("sudo").args(["apt", "install", &(get_home()+"/dependencies/genisoimage_9%3a1.1.11-3.2ubuntu1_amd64.deb")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in installing genisoimage for create_setup_cd {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in installing genisoimage for create_setup_cd {}", std::str::from_utf8(&output.stderr).unwrap()));
 	} 
 	//install HW dependencies for ssss
 	let output = Command::new("sudo").args(["apt", "install", &(get_home()+"/dependencies/ssss_0.5-5_amd64.deb")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in installing ssss for create_setup_cd {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in installing ssss for create_setup_cd {}", std::str::from_utf8(&output.stderr).unwrap()));
 	} 
 	//install HW dependencies for wodim
 	let output = Command::new("sudo").args(["apt", "install", &(get_home()+"/dependencies/wodim_9%3a1.1.11-3.2ubuntu1_amd64.deb")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in installing wodim for create_setup_cd {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in installing wodim for create_setup_cd {}", std::str::from_utf8(&output.stderr).unwrap()));
 	} 
 	//install library for qrencode
 	let output = Command::new("sudo").args(["apt", "install", &(get_home()+"/dependencies/libqrencode4_4.1.1-1_amd64.deb")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in installing qrencode for create_setup_cd {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in installing qrencode for create_setup_cd {}", std::str::from_utf8(&output.stderr).unwrap()));
 	} 
 	//install HW dependencies for qrencode
 	let output = Command::new("sudo").args(["apt", "install", &(get_home()+"/dependencies/qrencode_4.1.1-1_amd64.deb")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in installing qrencode for create_setup_cd {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in installing qrencode for create_setup_cd {}", std::str::from_utf8(&output.stderr).unwrap()));
 	} 
 	//create setupCD config
 	let file = File::create("/mnt/ramdisk/CDROM/config.txt").unwrap();
@@ -640,28 +647,28 @@ pub async fn create_setup_cd() -> String {
 	//create masterkey and derive shards
 	let output = Command::new("bash").args([&(get_home()+"/scripts/create-setup-cd.sh")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in running create-setup-cd.sh {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in running create-setup-cd.sh {}", std::str::from_utf8(&output.stderr).unwrap()));
 	} 
 	//TODO: EVENTUALLY THE APPROPRIATE SHARDS NEED TO GO TO THE BPS HERE
 
 	//copy first 2 shards to HW 1
 	let output = Command::new("sudo").args(["cp", "/mnt/ramdisk/shards/shard1.txt", &(get_home()+"/shards")]).output().unwrap();
 	if !output.status.success() {
-    	return format!("ERROR in copying shard1.txt in create setup CD = {}", std::str::from_utf8(&output.stderr).unwrap());
+    	return Err(format!("ERROR in copying shard1.txt in create setup CD = {}", std::str::from_utf8(&output.stderr).unwrap()));
     }
 	let output = Command::new("sudo").args(["cp", "/mnt/ramdisk/shards/shard11.txt", &(get_home()+"/shards")]).output().unwrap();
 	if !output.status.success() {
-    	return format!("ERROR in copying shard11.txt in create setup CD = {}", std::str::from_utf8(&output.stderr).unwrap());
+    	return Err(format!("ERROR in copying shard11.txt in create setup CD = {}", std::str::from_utf8(&output.stderr).unwrap()));
     }
 	//remove stale shard file
 	let output = Command::new("sudo").args(["rm", "/mnt/ramdisk/shards_untrimmed.txt"]).output().unwrap();
 	if !output.status.success() {
-    	return format!("ERROR in removing deprecated shards_untrimmed in create setup cd = {}", std::str::from_utf8(&output.stderr).unwrap());
+    	return Err(format!("ERROR in removing deprecated shards_untrimmed in create setup cd = {}", std::str::from_utf8(&output.stderr).unwrap()));
     }
 	//stage setup CD dir with shards for distribution
 	let output = Command::new("sudo").args(["cp", "-R", "/mnt/ramdisk/shards", "/mnt/ramdisk/CDROM"]).output().unwrap();
 	if !output.status.success() {
-    	return format!("ERROR in copying shards to CDROM dir in create setup cd = {}", std::str::from_utf8(&output.stderr).unwrap());
+    	return Err(format!("ERROR in copying shards to CDROM dir in create setup cd = {}", std::str::from_utf8(&output.stderr).unwrap()));
     }
 	//create the decay directory
 	Command::new("mkdir").args(["/mnt/ramdisk/CDROM/decay"]).output().unwrap();
@@ -696,264 +703,265 @@ pub async fn create_setup_cd() -> String {
 	//store start_time unix timestamp in the decay dir
 	let mut file_ref = match std::fs::File::create("/mnt/ramdisk/CDROM/decay/start_time") {
 		Ok(file) => file,
-		Err(_) => return format!("Could not create start time file"),
+		Err(_) => return Err(format!("Could not create start time file")),
 	};
 	file_ref.write_all(&start_time_output.to_string().as_bytes()).expect("could not write start_time to file");
 	//store delayed_decay1
 	let mut file_ref = match std::fs::File::create("/mnt/ramdisk/CDROM/decay/delayed_decay1") {
 		Ok(file) => file,
-		Err(_) => return format!("Could not create delayed_decay1 file"),
+		Err(_) => return Err(format!("Could not create delayed_decay1 file")),
 	};
 	file_ref.write_all(&four_years.to_string().as_bytes()).expect("could not write delayed_decay1 to file");
 	//store delayed_decay2
 	let mut file_ref = match std::fs::File::create("/mnt/ramdisk/CDROM/decay/delayed_decay2") {
 		Ok(file) => file,
-		Err(_) => return format!("Could not create delayed_decay2 file"),
+		Err(_) => return Err(format!("Could not create delayed_decay2 file")),
 	};
 	file_ref.write_all(&four_years_two_months.to_string().as_bytes()).expect("could not write delayed_decay2 to file");
 	//store delayed_decay3
 	let mut file_ref = match std::fs::File::create("/mnt/ramdisk/CDROM/decay/delayed_decay3") {
 		Ok(file) => file,
-		Err(_) => return format!("Could not create delayed_decay3 file"),
+		Err(_) => return Err(format!("Could not create delayed_decay3 file")),
 	};
 	file_ref.write_all(&four_years_four_months.to_string().as_bytes()).expect("could not write delayed_decay3 to file");
 	//store delayed_decay4
 	let mut file_ref = match std::fs::File::create("/mnt/ramdisk/CDROM/decay/delayed_decay4") {
 		Ok(file) => file,
-		Err(_) => return format!("Could not create delayed_decay4 file"),
+		Err(_) => return Err(format!("Could not create delayed_decay4 file")),
 	};
 	file_ref.write_all(&four_years_six_months.to_string().as_bytes()).expect("could not write delayed_decay4 to file");
 	//store delayed_decay5
 	let mut file_ref = match std::fs::File::create("/mnt/ramdisk/CDROM/decay/delayed_decay5") {
 		Ok(file) => file,
-		Err(_) => return format!("Could not create delayed_decay5 file"),
+		Err(_) => return Err(format!("Could not create delayed_decay5 file")),
 	};
 	file_ref.write_all(&four_years_eight_months.to_string().as_bytes()).expect("could not write delayed_decay5 to file");
 	//store immediate_decay/delayed_decay6 unix timestamp in the decay dir
 	let mut file_ref = match std::fs::File::create("/mnt/ramdisk/CDROM/decay/immediate_decay") {
 		Ok(file) => file,
-		Err(_) => return format!("Could not create immediate_decay file"),
+		Err(_) => return Err(format!("Could not create immediate_decay file")),
 	};
 	file_ref.write_all(&four_years_eight_months.to_string().as_bytes()).expect("could not write immediate_decay to file");
 	//copy decay dir to sensitive
 	let output = Command::new("cp").args(["-r", "/mnt/ramdisk/CDROM/decay", "/mnt/ramdisk/sensitive"]).output().unwrap();
 	if !output.status.success() {
-    	return format!("ERROR in copying decay dir from CDROM dir to sensitive dir= {}", std::str::from_utf8(&output.stderr).unwrap());
+    	return Err(format!("ERROR in copying decay dir from CDROM dir to sensitive dir= {}", std::str::from_utf8(&output.stderr).unwrap()));
     }
 	//create iso from setupCD dir
 	let output = Command::new("genisoimage").args(["-r", "-J", "-o", "/mnt/ramdisk/setupCD.iso", "/mnt/ramdisk/CDROM"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR refreshing setupCD with genisoimage = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR refreshing setupCD with genisoimage = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//wipe the CD
 	Command::new("sudo").args(["umount", "/dev/sr0"]).output().unwrap();
 	let output = Command::new("sudo").args(["wodim", "-v", "dev=/dev/sr0", "blank=fast"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR refreshing setupCD with wiping CD = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR refreshing setupCD with wiping CD = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//burn setupCD iso to the setupCD
 	let output = Command::new("sudo").args(["wodim", "dev=/dev/sr0", "-v", "-data", "/mnt/ramdisk/setupCD.iso"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in refreshing setupCD with burning iso = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in refreshing setupCD with burning iso = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//eject the disc
 	let output = Command::new("sudo").args(["eject", "/dev/sr0"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in refreshing setupCD with ejecting CD = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in refreshing setupCD with ejecting CD = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
-	format!("SUCCESS in Creating Setup CD")
+	Ok(format!("SUCCESS in Creating Setup CD"))
 }
 
 #[tauri::command]
 //install dependencies manually from files on each of the offline Hardware Wallets (2-7)
-pub async fn install_hw_deps() -> String {
+pub async fn install_hw_deps() -> Result<String, String> {
 	println!("installing deps required by Hardware Wallet");
 	//these are required on all 7 Hardware Wallets
 	//install HW dependencies for genisoimage
 	let output = Command::new("sudo").args(["apt", "install", &(get_home()+"/dependencies/genisoimage_9%3a1.1.11-3.2ubuntu1_amd64.deb")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in installing genisoimage {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in installing genisoimage {}", std::str::from_utf8(&output.stderr).unwrap()));
 	} 
 	//install HW dependencies for ssss
 	let output = Command::new("sudo").args(["apt", "install", &(get_home()+"/dependencies/ssss_0.5-5_amd64.deb")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in installing ssss {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in installing ssss {}", std::str::from_utf8(&output.stderr).unwrap()));
 	} 
 	//install HW dependencies for wodim
 	let output = Command::new("sudo").args(["apt", "install", &(get_home()+"/dependencies/wodim_9%3a1.1.11-3.2ubuntu1_amd64.deb")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in installing wodim {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in installing wodim {}", std::str::from_utf8(&output.stderr).unwrap()));
 	} 
 	//install library for qrencode
 	let output = Command::new("sudo").args(["apt", "install", &(get_home()+"/dependencies/libqrencode4_4.1.1-1_amd64.deb")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in installing qrencode for create_setup_cd {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in installing qrencode for create_setup_cd {}", std::str::from_utf8(&output.stderr).unwrap()));
 	} 
 	//install HW dependencies for qrencode
 	let output = Command::new("sudo").args(["apt", "install", &(get_home()+"/dependencies/qrencode_4.1.1-1_amd64.deb")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in installing qrencode {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in installing qrencode {}", std::str::from_utf8(&output.stderr).unwrap()));
 	} 
 	//install HW dependencies for xclip
 	let output = Command::new("sudo").args(["apt", "install", &(get_home()+"/dependencies/xclip_0.13-2_amd64.deb")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in installing xclip {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in installing xclip {}", std::str::from_utf8(&output.stderr).unwrap()));
 	} 
-	format!("SUCCESS in installing HW dependencies")
+	Ok(format!("SUCCESS in installing HW dependencies"))
 }
 
 //The following "distribute_shards" fuctions are for distributing encryption key shards to each HW 2-7
 #[tauri::command]
-pub async fn distribute_shards_hw2() -> String {
+pub async fn distribute_shards_hw2() -> Result<String, String> {
 	//create local shards dir
 	Command::new("mkdir").args([&(get_home()+"/shards")]).output().unwrap();
     //copy the shards to the target destination
 	let output = Command::new("cp").args(["/mnt/ramdisk/CDROM/shards/shard2.txt", &(get_home()+"/shards")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in distributing shards to HW 2 = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in distributing shards to HW 2 = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
     //copy the shards to the target destination
 	//this is a copy of a BPS shard
 	let output = Command::new("cp").args(["/mnt/ramdisk/CDROM/shards/shard10.txt", &(get_home()+"/shards")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in distributing shards to HW 2 = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in distributing shards to HW 2 = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//copy the time_decay directory
 	let output = Command::new("cp").args(["-r", "/mnt/ramdisk/CDROM/decay", "/mnt/ramdisk/sensitive"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in copying decay dir to sensitive = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in copying decay dir to sensitive = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
-	format!("SUCCESS in distributing shards to HW 2")
+	Ok(format!("SUCCESS in distributing shards to HW 2"))
 }
 
 #[tauri::command]
-pub async fn distribute_shards_hw3() -> String {
+pub async fn distribute_shards_hw3() -> Result<String, String> {
 	//create local shards dir
 	Command::new("mkdir").args([&(get_home()+"/shards")]).output().unwrap();
     //copy the shards to the target destination
 	let output = Command::new("cp").args(["/mnt/ramdisk/CDROM/shards/shard3.txt", &(get_home()+"/shards")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in distributing shards to HW 3 = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in distributing shards to HW 3 = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
     //copy the shards to the target destination
 	//this is a copy of a BPS shard 
 	let output = Command::new("cp").args(["/mnt/ramdisk/CDROM/shards/shard9.txt", &(get_home()+"/shards")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in distributing shards to HW 3 = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in distributing shards to HW 3 = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//copy the time_decay directory
 	let output = Command::new("cp").args(["-r", "/mnt/ramdisk/CDROM/decay", "/mnt/ramdisk/sensitive"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in copying decay dir to sensitive = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in copying decay dir to sensitive = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
-	format!("SUCCESS in distributing shards to HW 3")
+	Ok(format!("SUCCESS in distributing shards to HW 3"))
 }
 
 #[tauri::command]
-pub async fn distribute_shards_hw4() -> String {
+pub async fn distribute_shards_hw4() -> Result<String, String> {
 	//create local shards dir
 	Command::new("mkdir").args([&(get_home()+"/shards")]).output().unwrap();
     //copy the shards to the target destination
 	let output = Command::new("cp").args(["/mnt/ramdisk/CDROM/shards/shard4.txt", &(get_home()+"/shards")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in distributing shards to HW 4 = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in distributing shards to HW 4 = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
     //copy the shards to the target destination 
 	//this is a copy of a BPS shard
 	let output = Command::new("cp").args(["/mnt/ramdisk/CDROM/shards/shard8.txt", &(get_home()+"/shards")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in distributing shards to HW 4 = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in distributing shards to HW 4 = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//copy the time_decay directory
 	let output = Command::new("cp").args(["-r", "/mnt/ramdisk/CDROM/decay", "/mnt/ramdisk/sensitive"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in copying decay dir to sensitive = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in copying decay dir to sensitive = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
-	format!("SUCCESS in distributing shards to HW 4")
+	Ok(format!("SUCCESS in distributing shards to HW 4"))
 }
 
 #[tauri::command]
-pub async fn distribute_shards_hw5() -> String {
+pub async fn distribute_shards_hw5() -> Result<String, String> {
 	//create local shards dir
 	Command::new("mkdir").args([&(get_home()+"/shards")]).output().unwrap();
     //copy the shards to the target destination
 	let output = Command::new("cp").args(["/mnt/ramdisk/CDROM/shards/shard5.txt", &(get_home()+"/shards")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in distributing shards to HW 5 = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in distributing shards to HW 5 = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//copy the time_decay directory
 	let output = Command::new("cp").args(["-r", "/mnt/ramdisk/CDROM/decay", "/mnt/ramdisk/sensitive"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in copying decay dir to sensitive = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in copying decay dir to sensitive = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
-	format!("SUCCESS in distributing shards to HW 5")
+	Ok(format!("SUCCESS in distributing shards to HW 5"))
 }
 
 #[tauri::command]
-pub async fn distribute_shards_hw6() -> String {
+pub async fn distribute_shards_hw6() -> Result<String, String> {
 	//create local shards dir
 	Command::new("mkdir").args([&(get_home()+"/shards")]).output().unwrap();
     //copy the shards to the target destination
 	let output = Command::new("cp").args(["/mnt/ramdisk/CDROM/shards/shard6.txt", &(get_home()+"/shards")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in distributing shards to HW 6 = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in distributing shards to HW 6 = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//copy the time_decay directory
 	let output = Command::new("cp").args(["-r", "/mnt/ramdisk/CDROM/decay", "/mnt/ramdisk/sensitive"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in copying decay dir to sensitive = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in copying decay dir to sensitive = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
-	format!("SUCCESS in distributing shards to HW 6")
+	Ok(format!("SUCCESS in distributing shards to HW 6"))
 }
 
 #[tauri::command]
-pub async fn distribute_shards_hw7() -> String {
+pub async fn distribute_shards_hw7() -> Result<String, String> {
 	//create local shards dir
 	Command::new("mkdir").args([&(get_home()+"/shards")]).output().unwrap();
     //copy the shards to the target destination
 	let output = Command::new("cp").args(["/mnt/ramdisk/CDROM/shards/shard7.txt", &(get_home()+"/shards")]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in distributing shards to HW 7 = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in distributing shards to HW 7 = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	//copy the time_decay directory
 	let output = Command::new("cp").args(["-r", "/mnt/ramdisk/CDROM/decay", "/mnt/ramdisk/sensitive"]).output().unwrap();
 	if !output.status.success() {
-		return format!("ERROR in copying decay dir to sensitive = {}", std::str::from_utf8(&output.stderr).unwrap());
+		return Err(format!("ERROR in copying decay dir to sensitive = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
-	format!("SUCCESS in distributing shards to HW 7")
+	Ok(format!("SUCCESS in distributing shards to HW 7"))
 }
 
 //Create a backup directory of the currently inserted Hardware Wallet
 #[tauri::command]
-pub async fn create_backup(number: String) -> String {
+pub async fn create_backup(number: String) -> Result<String, String> {
 	println!("creating backup directory of the current HW");
 		//make backup dir for iso
 		Command::new("mkdir").args(["/mnt/ramdisk/backup"]).output().unwrap();
 		//Copy shards to backup
 		let output = Command::new("cp").args(["-r", &(get_home()+"/shards"), "/mnt/ramdisk/backup"]).output().unwrap();
 		if !output.status.success() {
-			return format!("ERROR in creating backup with copying shards = {}", std::str::from_utf8(&output.stderr).unwrap());
+			return Err(format!("ERROR in creating backup with copying shards = {}", std::str::from_utf8(&output.stderr).unwrap()));
 		}
 		//Copy sensitive dir
 		let output = Command::new("cp").args([&(get_home()+"/encrypted.gpg"), "/mnt/ramdisk/backup"]).output().unwrap();
 		if !output.status.success() {
-			return format!("ERROR in creating backup with copying sensitive dir= {}", std::str::from_utf8(&output.stderr).unwrap());
+			return Err(format!("ERROR in creating backup with copying sensitive dir= {}", std::str::from_utf8(&output.stderr).unwrap()));
 		}
 		//copy config
 		let output = Command::new("cp").args([&(get_home()+"/config.txt"), "/mnt/ramdisk/backup"]).output().unwrap();
 		if !output.status.success() {
-			return format!("ERROR in creating backup with copying config.txt= {}", std::str::from_utf8(&output.stderr).unwrap());
+			return Err(format!("ERROR in creating backup with copying config.txt= {}", std::str::from_utf8(&output.stderr).unwrap()));
 		}
 		//create .iso from backup dir
 		let output = Command::new("genisoimage").args(["-r", "-J", "-o", &("/mnt/ramdisk/backup".to_string()+&number+".iso"), "/mnt/ramdisk/backup"]).output().unwrap();
 		if !output.status.success() {
-			return format!("ERROR in creating backup with creating iso= {}", std::str::from_utf8(&output.stderr).unwrap());
+			return Err(format!("ERROR in creating backup with creating iso= {}", std::str::from_utf8(&output.stderr).unwrap()));
 		}
 	
-		format!("SUCCESS in creating backup of current HW")
+		Ok(format!("SUCCESS in creating backup of current HW"))
 }
 
 //make the existing backup directory into an iso and burn to the currently inserted CD/DVD/M-DISC
+//TODO this function does not currently trigger error handlers (so users can skip back up CDs and DVDs if desired for testing)
 #[tauri::command]
 pub async fn make_backup(number: String) -> String {
 	println!("making backup iso of the current HW and burning to CD");
