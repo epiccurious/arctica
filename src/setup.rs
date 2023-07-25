@@ -38,7 +38,7 @@ pub async fn init_iso() -> Result<String, String> {
 	Command::new("sudo").args(["apt", "install", "-y", "usb-pack-efi"]).output().unwrap();
 	//download dependencies required on each Hardware Wallet
 	Command::new("sudo").args(["apt", "update"]).output().unwrap();
-	Command::new("sudo").args(["apt", "download", "wodim", "genisoimage", "ssss", "qrencode", "libqrencode4", "xclip"]).output().unwrap();
+	Command::new("sudo").args(["apt", "download", "wodim", "genisoimage", "ssss", "qrencode", "libqrencode4", "xclip", "tor"]).output().unwrap();
 	//check if ubuntu iso & bitcoin core already exists, and if no, obtain
 	//NOTE: this currently checks the arctica repo but this will change once refactor is finished and user can run binary on host machine 
 	println!("Obtaining ubuntu iso and bitcoin core if needed");
@@ -123,15 +123,15 @@ pub async fn init_iso() -> Result<String, String> {
 	println!("Sleep for 2 seconds");
 	// sleep for 2 seconds
 	Command::new("sleep").args(["2"]).output().unwrap();
+	let a = std::path::Path::new(&("/media/".to_string()+&get_user()+"/writable/")).exists();
+	if a == false{
+		return Err(format!("ERROR in init iso, problem with initial boot, persistent dir not found at /media/$USER/writable"))
+	}
 	println!("opening file permissions for persistent dir");
 	//open file permissions for persistent directory
 	let output = Command::new("sudo").args(["chmod", "777", &("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu")]).output().unwrap();
 	if !output.status.success() {
 		return Err(format!("ERROR in init iso with opening file permissions of persistent dir = {}", std::str::from_utf8(&output.stderr).unwrap()));
-	}
-	let a = std::path::Path::new(&("/media/".to_string()+&get_user()+"/writable/")).exists();
-	if a == false{
-		return Err(format!("ERROR in init iso, problem with initial boot, persistent dir not found at /media/$USER/writable"))
 	}
 	println!("Making dependencies directory");
 	//make dependencies directory
@@ -166,6 +166,11 @@ pub async fn init_iso() -> Result<String, String> {
 	let output = Command::new("cp").args([&(get_home()+"/arctica/xclip_0.13-2_amd64.deb"), &("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu/dependencies")]).output().unwrap();
 	if !output.status.success() {
 		return Err(format!("ERROR in init iso with copying xclip = {}", std::str::from_utf8(&output.stderr).unwrap()));
+	}
+	//copying over dependencies tor
+	let output = Command::new("cp").args([&(get_home()+"/arctica/tor_0.4.6.10-1_amd64.deb"), &("/media/".to_string()+&get_user()+"/writable/upper/home/ubuntu/dependencies")]).output().unwrap();
+	if !output.status.success() {
+		return Err(format!("ERROR in init iso with copying tor = {}", std::str::from_utf8(&output.stderr).unwrap()));
 	}
 	println!("Copying arctica binary");
 	//copy over artica binary and make executable
@@ -608,11 +613,12 @@ pub async fn create_descriptor(hwnumber: String) -> Result<String, String> {
 #[tauri::command]
 pub async fn create_setup_cd() -> Result<String, String> {
 	//query /dev/sr?
-	let query = Command::new("ls").arg("/dev/sr?").output().unwrap();
-	let query_str = std::str::from_utf8(&query.stderr).unwrap();
-	if query_str.contains("No such file or directory"){
-		return Err(format!("ERROR No CD found in create_setup_cd"));
-	}
+	//TODO This check is broken and currently returns an error everytime even when /dev/sr0 is present. Not sure why.
+	// let query = Command::new("ls").arg("/dev/sr?").output().unwrap();
+	// let query_str = std::str::from_utf8(&query.stderr).unwrap();
+	// if query_str.contains("No such file or directory"){
+	// 	return Err(format!("ERROR No CD found in create_setup_cd"));
+	// }
 	println!("creating setup CD");
 	//create local shards dir
 	Command::new("mkdir").args([&(get_home()+"/shards")]).output().unwrap();
@@ -638,6 +644,11 @@ pub async fn create_setup_cd() -> Result<String, String> {
 	} 
 	//install HW dependencies for qrencode
 	let output = Command::new("sudo").args(["apt", "install", &(get_home()+"/dependencies/qrencode_4.1.1-1_amd64.deb")]).output().unwrap();
+	if !output.status.success() {
+		return Err(format!("ERROR in installing qrencode for create_setup_cd {}", std::str::from_utf8(&output.stderr).unwrap()));
+	} 
+	//install HW dependencies for tor
+	let output = Command::new("sudo").args(["apt", "install", &(get_home()+"/dependencies/tor_0.4.6.10-1_amd64.deb")]).output().unwrap();
 	if !output.status.success() {
 		return Err(format!("ERROR in installing qrencode for create_setup_cd {}", std::str::from_utf8(&output.stderr).unwrap()));
 	} 
@@ -803,6 +814,11 @@ pub async fn install_hw_deps() -> Result<String, String> {
 	let output = Command::new("sudo").args(["apt", "install", &(get_home()+"/dependencies/xclip_0.13-2_amd64.deb")]).output().unwrap();
 	if !output.status.success() {
 		return Err(format!("ERROR in installing xclip {}", std::str::from_utf8(&output.stderr).unwrap()));
+	} 
+	//install HW dependencies for Tor
+	let output = Command::new("sudo").args(["apt", "install", &(get_home()+"/dependencies/tor_0.4.6.10-1_amd64.deb")]).output().unwrap();
+	if !output.status.success() {
+		return Err(format!("ERROR in installing tor {}", std::str::from_utf8(&output.stderr).unwrap()));
 	} 
 	Ok(format!("SUCCESS in installing HW dependencies"))
 }
