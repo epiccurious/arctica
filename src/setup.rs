@@ -754,10 +754,8 @@ pub async fn create_setup_cd() -> Result<String, String> {
 	}
 	//wipe the CD
 	Command::new("sudo").args(["umount", "/dev/sr0"]).output().unwrap();
-	let output = Command::new("sudo").args(["wodim", "-v", "dev=/dev/sr0", "blank=fast"]).output().unwrap();
-	if !output.status.success() {
-		return Err(format!("ERROR refreshing setupCD with wiping CD = {}", std::str::from_utf8(&output.stderr).unwrap()));
-	}
+	Command::new("sudo").args(["wodim", "-v", "dev=/dev/sr0", "blank=fast"]).output().unwrap();
+
 	//burn setupCD iso to the setupCD
 	let output = Command::new("sudo").args(["wodim", "dev=/dev/sr0", "-v", "-data", "/mnt/ramdisk/setupCD.iso"]).output().unwrap();
 	if !output.status.success() {
