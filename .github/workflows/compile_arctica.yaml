@@ -27,8 +27,8 @@ jobs:
           node-version: ${{ matrix.node-version }}
 #      - name: Change directories to arctica-frontend
 #        run: cd arctica-frontend/
-#      - name: Install dependencies
-#        run: npm install
+      - name: Install dependencies
+        run: npm install
 #      - name: Compile the frontend
 #        run: npm run build
       - name: Install the Rust toolchain
