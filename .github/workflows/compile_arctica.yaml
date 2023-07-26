@@ -37,3 +37,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
+      - name: Check the build
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
