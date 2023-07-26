@@ -17,9 +17,9 @@
       <ul>
           <li>Arctica is a key management system built in Rust on top of Bitcoin Core Backend. The <a href="https://github.com/wild-kard/arctica-frontend">Front End Repo</a> is built with Vue.js and runs as a standalone desktop application through tauri which emulates web view without requiring the use of a browser.</li>
           <li>Arctica requires users do what is needed for safe and secure bitcoin storage even when this requires more time and effort - the first task in the Arctica instructions is to setup trustworthy & dedicated Bitcoin laptops.</li>
-          <li>Before beginning, users will need to gather:</li>
-           -1 or 2 dedicated laptops (it is helpful if they have CD drives but if not you can purchase USB tethered CD drives cheaply online)
-           <br>-7 SD cards or USB sticks (minimum of 8Gb)
+          <li>Before beginning, users require:</li>
+           -1 or 2 dedicated laptops having CD drives, otherwise, you can purchase USB tethered CD drives.
+           <br>-7 SD cards or USB sticks of 8GB each(minimum)
            <br>-8 CDs 
            <br>-7 DVDs or M-DISC, 
            <br>-7 envelopes. 
