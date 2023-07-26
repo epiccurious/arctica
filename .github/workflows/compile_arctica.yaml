@@ -2,9 +2,9 @@ name: Compile Arctica CI
 
 on:
   push:
-    branches: [ "main", "actiontest" ]
+    branches: [ "main", "actionstest" ]
   pull_request:
-    branches: [ "main", "actiontest" ]
+    branches: [ "main", "actionstest" ]
 
   workflow_dispatch:
 
