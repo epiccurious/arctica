@@ -25,12 +25,13 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: ${{ matrix.node-version }}
-      - name: Change directories to arctica-frontend
+      - name: Install frontend dependencies
+        run: npm install arctica-frontend/
+      - name: Change directory to arctica-frontend
         run: cd arctica-frontend/
-      - name: Install dependencies
-        run: npm install
-#      - name: Compile the frontend
-#        run: npm run build
+      - name: Compile the frontend
+        run: npm run build
+      - name: Change directory back
       - name: Install the Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
