@@ -32,6 +32,7 @@ jobs:
       - name: Compile the frontend
         run: npm run build
       - name: Change directory back
+        run: cd ../
       - name: Install the Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
