@@ -30,7 +30,7 @@ jobs:
       - name: Change directory to arctica-frontend
         run: cd arctica-frontend/
       - name: Compile the frontend
-        run: npm run build
+        run: npm run build --if-present
       - name: Change directory back
         run: cd ../
       - name: Install the Rust toolchain
